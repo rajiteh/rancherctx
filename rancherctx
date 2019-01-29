@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# kubectx(1) is a utility to manage and switch between kubectl contexts.
+# rancherctx(1) is a utility to manage and switch between rancher clusters.
 
 # Copyright 2017 Google Inc.
 #
@@ -22,21 +22,22 @@ set -eou pipefail
 IFS=$'\n\t'
 
 SELF_CMD="$0"
-KUBECTX="${XDG_CACHE_HOME:-$HOME/.kube}/kubectx"
+RANCHERCTX="${XDG_CACHE_HOME:-$HOME/.rancher}/rancherctx"
+RANCHER_CLI_CONFIG="${RANCHER_CLI_CONFIG:-$HOME/.rancher/cli2.json}"
 
 usage() {
   cat <<"EOF"
 USAGE:
-  kubectx                       : list the contexts
-  kubectx <NAME>                : switch to context <NAME>
-  kubectx -                     : switch to the previous context
-  kubectx <NEW_NAME>=<NAME>     : rename context <NAME> to <NEW_NAME>
-  kubectx <NEW_NAME>=.          : rename current-context to <NEW_NAME>
-  kubectx -d <NAME> [<NAME...>] : delete context <NAME> ('.' for current-context)
+  rancherctx                       : list the contexts
+  rancherctx <NAME>                : switch to context <NAME>
+  rancherctx -                     : switch to the previous context
+  rancherctx <NEW_NAME>=<NAME>     : rename context <NAME> to <NEW_NAME>
+  rancherctx <NEW_NAME>=.          : rename current-context to <NEW_NAME>
+  rancherctx -d <NAME> [<NAME...>] : delete context <NAME> ('.' for current-context)
                                   (this command won't delete the user/cluster entry
                                   that is used by the context)
 
-  kubectx -h,--help         : show this message
+  rancherctx -h,--help         : show this message
 EOF
 }
 
@@ -46,11 +47,11 @@ exit_err() {
 }
 
 current_context() {
-  $KUBECTL config view -o=jsonpath='{.current-context}'
+  cat ${RANCHER_CLI_CONFIG} | jq -r '.CurrentServer'
 }
 
 get_contexts() {
-  $KUBECTL config get-contexts -o=name | sort -n
+  cat ${RANCHER_CLI_CONFIG} | jq -r '.Servers | keys[]'
 }
 
 list_contexts() {
@@ -65,11 +66,11 @@ list_contexts() {
   normal=$(tput sgr0 || true)
 
   local cur_ctx_fg cur_ctx_bg
-  cur_ctx_fg=${KUBECTX_CURRENT_FGCOLOR:-$yellow}
-  cur_ctx_bg=${KUBECTX_CURRENT_BGCOLOR:-$darkbg}
+  cur_ctx_fg=${RANCHERCTX_CURRENT_FGCOLOR:-$yellow}
+  cur_ctx_bg=${RANCHERCTX_CURRENT_BGCOLOR:-$darkbg}
 
   for c in $ctx_list; do
-  if [[ -n "${_KUBECTX_FORCE_COLOR:-}" || \
+  if [[ -n "${_RANCHERCTX_FORCE_COLOR:-}" || \
        -t 1 && -z "${NO_COLOR:-}" ]]; then
     # colored output mode
     if [[ "${c}" = "${cur}" ]]; then
@@ -84,8 +85,8 @@ list_contexts() {
 }
 
 read_context() {
-  if [[ -f "${KUBECTX}" ]]; then
-    cat "${KUBECTX}"
+  if [[ -f "${RANCHERCTX}" ]]; then
+    cat "${RANCHERCTX}"
   fi
 }
 
@@ -94,17 +95,18 @@ save_context() {
   saved="$(read_context)"
 
   if [[ "${saved}" != "${1}" ]]; then
-    printf %s "${1}" > "${KUBECTX}"
+    printf %s "${1}" > "${RANCHERCTX}"
   fi
 }
 
 switch_context() {
-  $KUBECTL config use-context "${1}"
+  tmp=$(mktemp)
+  jq '.CurrentServer = "'"${1}"'"' ${RANCHER_CLI_CONFIG} > "$tmp" && mv "$tmp" ${RANCHER_CLI_CONFIG}
 }
 
 choose_context_interactive() {
   local choice
-  choice="$(_KUBECTX_FORCE_COLOR=1 \
+  choice="$(_RANCHERCTX_FORCE_COLOR=1 \
     FZF_DEFAULT_COMMAND="${SELF_CMD}" \
     fzf --ansi || true)"
   if [[ -z "${choice}" ]]; then
@@ -137,10 +139,12 @@ swap_context() {
 }
 
 context_exists() {
-  grep -q ^"${1}"\$ <($KUBECTL config get-contexts -o=name)
+  grep -q ^"${1}"\$ <(read_contexts)
 }
 
 rename_context() {
+  echo "NOT IMPLEMENTED"
+  return 1
   local old_name="${1}"
   local new_name="${2}"
 
@@ -163,6 +167,8 @@ delete_contexts() {
 }
 
 delete_context() {
+  echo "NOT IMPLEMENTED"
+  return 1
   local ctx
   ctx="${1}"
   if [[ "${ctx}" == "." ]]; then
@@ -173,17 +179,17 @@ delete_context() {
 }
 
 main() {
-  if hash kubectl 2>/dev/null; then
-    KUBECTL=kubectl
-  elif hash kubectl.exe 2>/dev/null; then
-    KUBECTL=kubectl.exe
+  if hash rancher 2>/dev/null; then
+    RANCHER=rancher
+  elif hash rancher.exe 2>/dev/null; then
+    RANCHER=rancher.exe
   else
-    echo >&2 "kubectl is not installed"
+    echo >&2 "rancher cli is not installed"
     exit 1
   fi
 
   if [[ "$#" -eq 0 ]]; then
-    if [[ -t 1 &&  -z "${KUBECTX_IGNORE_FZF:-}" && "$(type fzf &>/dev/null; echo $?)" -eq 0 ]]; then
+    if [[ -t 1 &&  -z "${RANCHERCTX_IGNORE_FZF:-}" && "$(type fzf &>/dev/null; echo $?)" -eq 0 ]]; then
       choose_context_interactive
     else
       list_contexts
